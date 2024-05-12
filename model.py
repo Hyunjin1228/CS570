@@ -101,7 +101,7 @@ class Original_Model(nn.Module):
     self.fc1 = nn.Linear(23*2, 3, bias=False)
     self.pool2 = nn.MaxPool2d(3)
     self.conv3 = nn.Conv2d(in_channels=13*6, out_channels=128, kernel_size=(7,4), stride=1)
-    self.fc1 = nn.Linear(128, 3, bias=False)
+    self.fc1 = nn.Linear(128, 6, bias=False)
     
   def forward(self, x):
     if self.verbose: print("연산 전:\t\t", x.size())

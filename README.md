@@ -1,5 +1,20 @@
 # CS570
 
+1. Download the dataset.
+~~~
+python kth_download.py
+~~~
+
+2. Make the dataset for training.
+~~~
+python KTH.py
+~~~
+
+3. Run the model
+~~~
+python run.py
+~~~
+
 
 ### KTH Dataset
 @inproceedings{inproceedings,

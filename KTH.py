@@ -18,9 +18,9 @@ CATEGORIES = [
 
 # Dataset are divided according to the instruction at:
 # http://www.nada.kth.se/cvap/actions/00sequences.txt
-TRAIN_PEOPLE_ID = [11, 12, 13, 14, 15, 16, 17, 18]
+TRAIN_PEOPLE_ID = [11, 12] #, 13] #, 14, 15, 16, 17, 18]
 DEV_PEOPLE_ID = [19, 20, 21, 23, 24, 25, 1, 4]
-TEST_PEOPLE_ID = [22, 2, 3, 5, 6, 7, 8, 9, 10]
+TEST_PEOPLE_ID = [22, 2] #, 3] #, 5, 6, 7, 8, 9, 10]
 
 def make_raw_dataset(dataset="train"):
     if dataset == "train":
