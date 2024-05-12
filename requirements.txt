@@ -1,0 +1,10 @@
+torchsummary
+opencv-python
+pytube
+deeplake
+IPython
+flask
+av
+imageio
+scipy
+imageio[ffmpeg]
