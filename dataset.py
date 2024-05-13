@@ -93,23 +93,20 @@ class RawDataset(Dataset):
 
     def hardwire(self,filename,  instance, label, w, h, frames):
         # print(filename)
+        hardwire_size = frames * 5 -2
         input = np.zeros((frames, h, w, 3), dtype='float32')  # 7 input 'rgb' frames
-
+        gray = np.zeros((frames, h, w), dtype='uint8')
+        hardwired = np.zeros((hardwire_size, h,w)) # 7 for gray,gradient-x,y (7x3=21)  +   6 for optflow-x,y (6x2=12)
 #        cap = cv2.VideoCapture(filename)
         hardwires = []
         labels = []
         # print(np.shape(instance))
+        
         for i, frame in enumerate(instance[:-frames]):
-            if i % frames == 0 and i + frames - 1 < len(instance):
+            if i % frames == 0 and i + frames < len(instance):
                 for f in range(frames):
-    #            _, frame = cap.read()
-    #            print(instance.shape)
                     input[f,:,:,:] = instance[i+f]
-    #        print(input.shape)
-
-                gray = np.zeros((frames, h, w), dtype='uint8')
-                hardwire_size = frames * 5 -2
-                hardwired = np.zeros((hardwire_size, h,w)) # 7 for gray,gradient-x,y (7x3=21)  +   6 for optflow-x,y (6x2=12)
+               
                 for f in range(frames):
                     # gray
                     gray[f,:,:] = cv2.cvtColor(input[f,:,:,:], cv2.COLOR_BGR2GRAY)

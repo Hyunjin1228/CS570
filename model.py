@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
-import numpy as np
 import cv2
 from pytube import YouTube
 import os
@@ -23,24 +22,25 @@ CATEGORY_INDEX = {
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0
 
 class Original_Model(nn.Module):
-    def __init__(self, verbose=True, input_dim = 9):
+    def __init__(self, verbose=False, input_dim = 9):
         super(Original_Model, self).__init__()
         self.verbose = verbose
         self.f = input_dim
         self.dim = self.f * 5 - 2
         self.dim1, self.dim2 = (self.dim-10)*2, (self.dim-20)*6
-        print(self.dim, self.dim1, self.dim2)
+        # print(self.dim, self.dim1, self.dim2)
 
-        self.conv1 = nn.Conv3d(in_channels=1, out_channels=2, kernel_size=(3,7,7), stride=1)
-        self.conv2 = nn.Conv3d(in_channels=2, out_channels=6, kernel_size=(3,7,6), stride=1)
-        self.pool1 = nn.MaxPool2d(2)
-        self.fc1 = nn.Linear(self.dim1, 3, bias=False)
+        self.conv1 = nn.Conv3d(in_channels=1, out_channels=2, kernel_size=(3,9,7), stride=1)
+        self.conv2 = nn.Conv3d(in_channels=2, out_channels=6, kernel_size=(3,7,7), stride=1)
+        self.pool1 = nn.MaxPool2d(3)
+        
         self.pool2 = nn.MaxPool2d(3)
-        self.conv3 = nn.Conv2d(in_channels=self.dim2, out_channels=128, kernel_size=(7,4), stride=1)
-        self.fc1 = nn.Linear(128, 6, bias=False)
+        self.conv3 = nn.Conv2d(in_channels=self.dim2, out_channels=128, kernel_size=(6,4), stride=1)
+        self.fc2 = nn.Linear(128, 6, bias=False)
+
 
     def forward(self, x, input_dim):
-        print(input_dim)
+        # print(input_dim)
         if self.verbose: print("연산 전:\t", x.size())
         assert x.size()[1] == 1
         (x1, x2, x3, x4, x5) = torch.split(x, [self.f-1,self.f-1,self.f,self.f,self.f], dim=2)
@@ -71,7 +71,8 @@ class Original_Model(nn.Module):
         if self.verbose: print("conv3 연산 후:\t", x.shape)
         x = x.view(-1, 128)
         if self.verbose: print("veiw 연산 후:\t", x.shape)
-        x = F.relu(self.fc1(x))
+
+        x = F.relu(self.fc2(x))
         if self.verbose: print("fc1 연산 후:\t", x.shape)
         return x
   
