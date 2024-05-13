@@ -26,11 +26,12 @@ def evaluation(dataloader, frames, h, w):
             pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
         print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-                val_loss, correct, len(test_loader.dataset),
+                test_loss, correct, len(test_loader.dataset),
                 100. * correct / len(test_loader.dataset)))
                 
     model.train()
     val_loss = np.mean(val_loss)
+    print("Total loss: ", val_loss)
     return val_loss
 
 if __name__ == "__main__":
