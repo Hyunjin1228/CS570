@@ -3,10 +3,15 @@
 1. Download the dataset.
 ~~~
 python kth_download.py
+mv kth-human-motion/* kth
+rm kth-human-motion -r
 ~~~
+
+Make the downloaded file in the folder kth. As ./kth/boxing/person01_boxing_d1_uncomp.avi.
 
 2. Make the dataset for training.
 ~~~
+mkdir data
 python KTH.py
 ~~~
 

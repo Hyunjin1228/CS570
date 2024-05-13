@@ -7,57 +7,6 @@ from model import *
 # from train_helper import *
 import torch.optim as optim
 
-def hardwires(instances, labels):
-    hws = []
-    
-    for j, label in zip(instances, labels):
-        hw, _ = hardwire(j, label)
-        hws = hws + hw
-    hws = np.array(hws, dtype=np.float32)
-    return hws
-
-def hardwire_labels(instances, labels):
-    ls = []
-    for j, label in zip(instances, labels):
-        _, l = hardwire(i, j, label)
-        ls = ls + l
-    ls = np.array(ls, dtype=np.uint8)
-    return ls
-
-def hardwire(instance, label):
-    # print(filename)
-    w, h, frames = 40, 60, 7
-    input = np.zeros((frames, h, w, 3), dtype='float32')  # 7 input 'rgb' frames
-
-#        cap = cv2.VideoCapture(filename)
-    hardwires = []
-    labels = []
-    # print(np.shape(instance))
-    for i, frame in enumerate(instance[:-7]):
-        for f in range(frames):
-#            _, frame = cap.read()
-#            print(instance.shape)
-            input[f,:,:,:] = instance[i+f]
-#        print(input.shape)
-
-        gray = np.zeros((frames, h, w), dtype='uint8')
-        hardwired = np.zeros((33, h,w)) # 7 for gray,gradient-x,y (7x3=21)  +   6 for optflow-x,y (6x2=12)
-        for f in range(frames):
-            # gray
-            gray[f,:,:] = cv2.cvtColor(input[f,:,:,:], cv2.COLOR_BGR2GRAY)
-            hardwired[0+f,:,:] = gray[f,:,:]
-            # gradient-x, gradient-y
-            hardwired[7+f,:,:], hardwired[14+f,:,:] = np.gradient(gray[f,:,:], axis=1), np.gradient(gray[f,:,:], axis=0)
-
-        # optflow-x,y
-        for f in range(frames-1):
-            mask = np.zeros_like(gray[f,:,:])
-            flow = cv2.calcOpticalFlowFarneback(gray[f,:,:],gray[f+1,:,:],None,0.5,3,15,3,5,1.1,cv2.OPTFLOW_FARNEBACK_GAUSSIAN)
-            hardwired[21+f,:,:], hardwired[27+f,:,:] = flow[:,:,0], flow[:,:,1]
-        #hardwired = torch.from_numpy(hardwired).to(device)  # torch.randn(1, 1, 7, 60, 40)
-        hardwires.append(hardwired)
-        labels.append(label)
-    return hardwires, labels
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Single Frame ConvNet")
@@ -75,6 +24,10 @@ if __name__ == "__main__":
                         help="log frequency (default: 10 iterations)")
     parser.add_argument("--cuda", type=int, default=0,
                         help="whether to use cuda (default: 0)")
+    parser.add_argument("--width", type=int, default = 60)
+    parser.add_argument("--height", type=int, default = 80)
+    parser.add_argument("--frames", type=int, default = 9)
+
     args = parser.parse_args()
 
     dataset_dir = args.dataset_dir
@@ -83,28 +36,34 @@ if __name__ == "__main__":
     start_epoch = args.start_epoch
     lr = args.lr
     log_interval = args.log
+    w = args.width
+    h = args.height
+    frames = args.frames
     
     if args.cuda == 1:
         cuda = True
     else:
         cuda = False
 
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f'{device} is available')
+
     print("Loading dataset")
     
     torchvision_transform = transforms.Compose([
-        transforms.Resize((60, 40))
+        transforms.Resize((h, w))
     ])
     print("training data")
-    train_set = RawDataset(dataset_dir, "train", transform = torchvision_transform)
+    train_set = RawDataset(dataset_dir, "train", transform = torchvision_transform, height = h, width = w, frames = frames)
     print("training dataloader")
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
     # dev_set = RawDataset(dataset_dir, "dev", transform = torchvision_transform)
     print("test data")
-    test_set = TestDataset(dataset_dir, "test", transform = torchvision_transform)
+    test_set = TestDataset(dataset_dir, "test", transform = torchvision_transform, height = h, width = w, frames = frames)
     test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=batch_size, shuffle=True)
 
     # Create model and optimizer.
-    model = Original_Model()
+    model = Original_Model().to(device)
 #    ensemble_model = Ensemble()
     if start_epoch > 1:
         resume = True
@@ -117,17 +76,21 @@ if __name__ == "__main__":
     print("Start training")
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=lr)
-
+    hardwire_size = frames * 5 - 2
     model.train()  # 학습을 위함
     for epoch in range(10):
-        print("EPOCH: ", epoch)
+        print("EPOCH ", epoch)
         for index, (data, target) in enumerate(train_loader):
             # print(data)
-            # print(data.shape)
-            data = torch.reshape(data, (data.shape[0],1,33,60,40))
+            print(data.shape)
+            data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
+            target = target.to(device)
+            print(data.shape)
             optimizer.zero_grad()  # 기울기 초기화
-            output = model(data)
+            output = model(data, input_dim = frames)
             #print(output)
+            print(output.shape)
+            print(target)
             loss = criterion(output, target)
             loss.backward()  # 역전파
             optimizer.step()
@@ -141,8 +104,9 @@ if __name__ == "__main__":
 
     with torch.no_grad():
         for data, target in test_loader:
-            data = torch.reshape(data, (data.shape[0],1,33,60,40))
-            output = model(data)
+            data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
+            target = target.to(device)
+            output = model(data, frames)
             test_loss += criterion(output, target).item() # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()

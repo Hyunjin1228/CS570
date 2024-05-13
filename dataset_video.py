@@ -79,13 +79,13 @@ class RawDataset(Dataset):
 
 
     def hardwire(self, instance):
-        w, h, frames = 40, 60, 7
+        w, h, frames = 40, 60, 9
         input = np.zeros((frames, h, w, 3), dtype='float32')  # 7 input 'rgb' frames
 
 #        cap = cv2.VideoCapture(filename)
         hardwires = []
         # print(np.shape(instance))
-        for i, frame in enumerate(instance[:-7]):
+        for i, frame in enumerate(instance[:-frames]):
             for f in range(frames):
 #            _, frame = cap.read()
 #            print(instance.shape)
@@ -93,19 +93,20 @@ class RawDataset(Dataset):
 #        print(input.shape)
 
             gray = np.zeros((frames, h, w), dtype='uint8')
-            hardwired = np.zeros((33, h,w)) # 7 for gray,gradient-x,y (7x3=21)  +   6 for optflow-x,y (6x2=12)
+            hardwire_size = frames * 5 - 2
+            hardwired = np.zeros((hardwire_size, h,w)) # 7 for gray,gradient-x,y (7x3=21)  +   6 for optflow-x,y (6x2=12)
             for f in range(frames):
                 # gray
                 gray[f,:,:] = cv2.cvtColor(input[f,:,:,:], cv2.COLOR_BGR2GRAY)
                 hardwired[0+f,:,:] = gray[f,:,:]
                 # gradient-x, gradient-y
-                hardwired[7+f,:,:], hardwired[14+f,:,:] = np.gradient(gray[f,:,:], axis=1), np.gradient(gray[f,:,:], axis=0)
+                hardwired[frames+f,:,:], hardwired[2*frames+f,:,:] = np.gradient(gray[f,:,:], axis=1), np.gradient(gray[f,:,:], axis=0)
 
             # optflow-x,y
             for f in range(frames-1):
                 mask = np.zeros_like(gray[f,:,:])
                 flow = cv2.calcOpticalFlowFarneback(gray[f,:,:],gray[f+1,:,:],None,0.5,3,15,3,5,1.1,cv2.OPTFLOW_FARNEBACK_GAUSSIAN)
-                hardwired[21+f,:,:], hardwired[27+f,:,:] = flow[:,:,0], flow[:,:,1]
+                hardwired[frames*3+f,:,:], hardwired[frames*4-1+f,:,:] = flow[:,:,0], flow[:,:,1]
             #hardwired = torch.from_numpy(hardwired).to(device)  # torch.randn(1, 1, 7, 60, 40)
             hardwires.append(torch.from_numpy(hardwired).to(device))
         return hardwires
