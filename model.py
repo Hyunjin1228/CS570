@@ -23,7 +23,7 @@ CATEGORY_INDEX = {
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0
 
 class Original_Model(nn.Module):
-    def __init__(self, verbose=False, input_dim = 9):
+    def __init__(self, verbose=True, input_dim = 9):
         super(Original_Model, self).__init__()
         self.verbose = verbose
         self.f = input_dim
@@ -70,6 +70,7 @@ class Original_Model(nn.Module):
         x = F.relu(self.conv3(x))
         if self.verbose: print("conv3 연산 후:\t", x.shape)
         x = x.view(-1, 128)
+        if self.verbose: print("veiw 연산 후:\t", x.shape)
         x = F.relu(self.fc1(x))
         if self.verbose: print("fc1 연산 후:\t", x.shape)
         return x
