@@ -9,14 +9,14 @@ import torch.optim as optim
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold
 
-def evaluation(dataloader, frames, h, w):
+def evaluation(model, dataloader, frames, h, w):
     hardwire_size = frames * 5 - 2 
     test_loss = 0
     correct = 0
     val_loss = []
     with torch.no_grad():
         model.eval()
-        for data, target in test_loader:
+        for data, target in dataloader:
             data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
             target = target.to(device)
             output = model(data, frames)
@@ -26,8 +26,8 @@ def evaluation(dataloader, frames, h, w):
             pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
         print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-                test_loss, correct, len(test_loader.dataset),
-                100. * correct / len(test_loader.dataset)))
+                test_loss, correct, len(dataloader.dataset),
+                100. * correct / len(dataloader.dataset)))
                 
     model.train()
     val_loss = np.mean(val_loss)
@@ -40,12 +40,12 @@ if __name__ == "__main__":
                         help="directory to dataset")
     parser.add_argument("--batch_size", type=int, default=16,
                         help="batch size for training (default: 16)")
-    parser.add_argument("--num_epochs", type=int, default=10,
-                        help="number of epochs to train (default: 10)")
+    parser.add_argument("--num_epochs", type=int, default=5,
+                        help="number of epochs to train (default: 5)")
     parser.add_argument("--start_epoch", type=int, default=1,
                         help="start index of epoch (default: 1)")
-    parser.add_argument("--lr", type=float, default=0.001,
-                        help="learning rate for training (default: 0.001)")
+    parser.add_argument("--lr", type=float, default=0.00001,
+                        help="learning rate for training (default: 0.00001)")
     parser.add_argument("--log", type=int, default=10,
                         help="log frequency (default: 10 iterations)")
     parser.add_argument("--cuda", type=int, default=0,
@@ -66,6 +66,7 @@ if __name__ == "__main__":
     h = args.height
     frames = args.frames
     
+    print(lr, num_epochs)
     if args.cuda == 1:
         cuda = True
     else:
@@ -82,9 +83,7 @@ if __name__ == "__main__":
 
     print("training data")
     train_set = RawDataset(dataset_dir, "train", transform = torchvision_transform, height = h, width = w, frames = frames)
-    print(train_set)
-    print("training dataloader")
-    train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
+    #train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
     #print("val data")
     #val_set = RawDataset(dataset_dir, "dev", transform = torchvision_transform, height = h, width = w, frames = frames)
     #print("val dataloader")
@@ -104,11 +103,14 @@ if __name__ == "__main__":
         valloader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, sampler=val_subsampler, num_workers=4)
 
         model = Original_Model().to(device)
-        optimizer = optim.Adam(model.parameters(), lr=lr)
+        optimizer = optim.RMSprop(model.parameters(), lr=lr)
         criterion = torch.nn.CrossEntropyLoss()
 
+        
         for epoch in range(num_epochs):
-            for index, (data, target) in enumerate(train_loader):
+            trainloss = 0
+            data_num = 0.0
+            for index, (data, target) in enumerate(trainloader):
                 inputs = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
                 target = target.to(device)
 
@@ -118,16 +120,44 @@ if __name__ == "__main__":
                 #print(output)
                 #print(output.shape)
                 #print(target)
+                pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
                 loss = criterion(output, target)
+                trainloss += loss.item() * data.shape[0]
+                data_num += data.shape[0]
                 loss.backward()  # 역전파
                 optimizer.step()
+                
 
                 if index % 250 == 0:
                     print("loss of {} epoch, {} index : {}".format(epoch, index, loss.item()))
-        
-        train_loss = evaluation(trainloader, frames, h, w)
-        val_loss = evaluation(valloader, frames, h, w)
-        print("k-fold", fold," Train Loss: %.4f, Validation Loss: %.4f" %(train_loss, val_loss)) 
+                    # print(inputs, output, target)
+                    # print(pred.eq(target.view_as(pred)).sum().item())
+
+            print("Epoch {} Loss = {}".format(epoch, trainloss/data_num))
+            
+        hardwire_size = frames * 5 - 2 
+        test_loss = 0
+        correct = 0
+        val_loss = []
+        with torch.no_grad():
+            model.eval()
+            for data, target in test_loader:
+                data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
+                target = target.to(device)
+                output = model(data, frames)
+                test_loss += criterion(output, target).item() # sum up batch loss
+                valid_loss = criterion(output,target).detach().cpu().numpy()
+                val_loss.append(valid_loss)
+                pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
+                correct += pred.eq(target.view_as(pred)).sum().item()
+            print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+                    test_loss, correct, len(test_loader.dataset),
+                    100. * correct / len(test_loader.dataset)))
+                    
+        model.train()
+        val_loss = np.mean(val_loss)
+        print("Validation loss: ", val_loss)
+        print("k-fold", fold," Validation Loss: %.4f" %(val_loss)) 
         validation_loss.append(val_loss)
     validation_loss = np.array(validation_loss)
     mean = np.mean(validation_loss)

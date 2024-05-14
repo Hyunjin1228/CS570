@@ -103,7 +103,7 @@ class RawDataset(Dataset):
         # print(np.shape(instance))
         
         for i, frame in enumerate(instance[:-frames]):
-            if i % frames == 0 and i + frames < len(instance):
+            if i % (frames * 2) == 0 and i + frames < len(instance):
                 for f in range(frames):
                     input[f,:,:,:] = instance[i+f]
                
