@@ -1,38 +1,35 @@
 import argparse
-import os
 from torchvision import transforms
 from dataset import *
 from model import *
-#import dataset
-# from train_helper import *
 import torch.optim as optim
-from sklearn.model_selection import train_test_split
-from sklearn.model_selection import KFold
+# from sklearn.model_selection import train_test_split
+# from sklearn.model_selection import KFold
 
-def evaluation(model, dataloader, frames, h, w):
-    hardwire_size = frames * 5 - 2 
-    test_loss = 0
-    correct = 0
-    val_loss = []
-    with torch.no_grad():
-        model.eval()
-        for data, target in dataloader:
-            data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
-            target = target.to(device)
-            output = model(data, frames)
-            test_loss += criterion(output, target).item() # sum up batch loss
-            valid_loss = criterion(output,target).detach().cpu().numpy()
-            val_loss.append(valid_loss)
-            pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
-        print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-                test_loss, correct, len(dataloader.dataset),
-                100. * correct / len(dataloader.dataset)))
+# def evaluation(model, dataloader, frames, h, w):
+#     hardwire_size = frames * 5 - 2 
+#     test_loss = 0
+#     correct = 0
+#     val_loss = []
+#     with torch.no_grad():
+#         model.eval()
+#         for data, target in dataloader:
+#             data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
+#             target = target.to(device)
+#             output = model(data, frames)
+#             test_loss += criterion(output, target).item() # sum up batch loss
+#             valid_loss = criterion(output,target).detach().cpu().numpy()
+#             val_loss.append(valid_loss)
+#             pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
+#             correct += pred.eq(target.view_as(pred)).sum().item()
+#         print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+#                 test_loss, correct, len(dataloader.dataset),
+#                 100. * correct / len(dataloader.dataset)))
                 
-    model.train()
-    val_loss = np.mean(val_loss)
-    print("Total loss: ", val_loss)
-    return val_loss
+#     model.train()
+#     val_loss = np.mean(val_loss)
+#     print("Total loss: ", val_loss)
+#     return val_loss
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Single Frame ConvNet")
@@ -48,8 +45,8 @@ if __name__ == "__main__":
                         help="learning rate for training (default: 0.00001)")
     parser.add_argument("--log", type=int, default=10,
                         help="log frequency (default: 10 iterations)")
-    parser.add_argument("--cuda", type=int, default=0,
-                        help="whether to use cuda (default: 0)")
+    parser.add_argument("--cpu_only", action='store_true',
+                        help="add the argument to use only cpu, not cuda")
     parser.add_argument("--width", type=int, default = 60)
     parser.add_argument("--height", type=int, default = 80)
     parser.add_argument("--frames", type=int, default = 9)
@@ -67,16 +64,12 @@ if __name__ == "__main__":
     frames = args.frames
     
     print(lr, num_epochs)
-    if args.cuda == 1:
-        cuda = True
-    else:
-        cuda = False
 
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:1' if torch.cuda.is_available() and not args.cpu_only else 'cpu')
     print(f'{device} is available')
 
     import wandb
-    wandb.init(
+    wandb.init( 
         # set the wandb project where this run will be logged
         project="CS570",
         # track hyperparameters and run metadata
@@ -91,48 +84,38 @@ if __name__ == "__main__":
     print("Loading dataset")
     
     torchvision_transform = transforms.Compose([
-        transforms.Resize((h, w))
-    ])
+    transforms.ToTensor(),
+    transforms.Resize((80, 60)),
+    transforms.Grayscale(num_output_channels=1)
+])
 
-    print("training data")
-    train_set = RawDataset(dataset_dir, "train", transform = torchvision_transform, height = h, width = w, frames = frames)
-    #train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True)
-    #print("val data")
-    #val_set = RawDataset(dataset_dir, "dev", transform = torchvision_transform, height = h, width = w, frames = frames)
-    #print("val dataloader")
-    #val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
-    print("test data")
-    test_set = TestDataset(dataset_dir, "test", transform = torchvision_transform, height = h, width = w, frames = frames)
-    test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=batch_size, shuffle=True)
 
-    # k-fold
     validation_loss = []
-    hardwire_size = frames * 5 - 2
-    kfold = KFold(n_splits=5, shuffle=True, random_state=42)
-    for fold, (train_idx, val_idx) in enumerate(kfold.split(train_set)):
-        train_subsampler = torch.utils.data.SubsetRandomSampler(train_idx) # index 생성
-        val_subsampler = torch.utils.data.SubsetRandomSampler(val_idx)
-        trainloader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, sampler=train_subsampler, num_workers=4) # 해당하는 index 추출
-        valloader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, sampler=val_subsampler, num_workers=4)
+    # hardwire_size = frames * 5 - 2
+    # kfold = KFold(n_splits=5, shuffle=True, random_state=42)
+    # for fold, (train_idx, val_idx) in enumerate(kfold.split(train_set)):
+    for i in range(5):
+        seed = random.randint(0, 100)
+        train_set = KTHDataset(dataset_dir, type="train", transform= torchvision_transform, frames = 9, seed=seed, device=device)
+        test_set = KTHDataset(dataset_dir, type="test", transform= torchvision_transform, frames = 9, seed=seed, device=device)
 
-        model = Original_Model().to(device)
-        optimizer = optim.RMSprop(model.parameters(), lr=lr)
+        train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=batch_size, num_workers=4, shuffle=True, pin_memory=True) # 해당하는 index 추출
+        test_loader = torch.utils.data.DataLoader(dataset=test_set, batch_size=batch_size, shuffle=True, pin_memory=True)
+
+        model = Original_Model(mode='KTH').to(device)
+        optimizer = optim.Adam(model.parameters(), lr=lr)
         criterion = torch.nn.CrossEntropyLoss()
-
         
         for epoch in range(num_epochs):
             trainloss = 0
             data_num = 0.0
-            for index, (data, target) in enumerate(trainloader):
-                inputs = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
+            for index, (data, target) in enumerate(train_loader):
+                inputs = data.to(device)
+                # inputs = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
                 target = target.to(device)
 
-                #print(data.shape)
                 optimizer.zero_grad()  # 기울기 초기화
-                output = model(inputs, input_dim = frames)
-                #print(output)
-                #print(output.shape)
-                #print(target)
+                output = model(inputs)
                 pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
                 loss = criterion(output, target)
                 trainloss += loss.item() * data.shape[0]
@@ -143,97 +126,57 @@ if __name__ == "__main__":
 
                 if index % 250 == 0:
                     print("loss of {} epoch, {:3d} index : {}".format(epoch, index, loss.item()))
+                    
+                if index % 10 == 0:
                     # log metrics to wandb
-                    wandb.log({"fold": fold, "epoch": epoch, "train loss": loss.item()})
-        
-                    # print(inputs, output, target)
-                    # print(pred.eq(target.view_as(pred)).sum().item())
+                    name = str(i)+"-th train losss"
+                    wandb.log({name: loss.item()})
 
             print("Epoch {} Loss = {}".format(epoch, trainloss/data_num))
             
-        hardwire_size = frames * 5 - 2 
+    #         hardwire_size = frames * 5 - 2 
+    #         test_loss = 0
+    #         correct = 0
+    #         val_loss = []
+    #         with torch.no_grad():
+    #             model.eval()
+    #             for data, target in test_loader:
+    #                 data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
+    #                 target = target.to(device)
+    #                 output = model(data, frames)
+    #                 test_loss += criterion(output, target).item() # sum up batch loss
+    #                 valid_loss = criterion(output,target).detach().cpu().numpy()
+    #                 val_loss.append(valid_loss)
+    #                 pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
+    #                 correct += pred.eq(target.view_as(pred)).sum().item()
+    #             print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+    #                     test_loss, correct, len(test_loader.dataset),
+    #                     100. * correct / len(test_loader.dataset)))
+                    
+    #     model.train()
+    #     val_loss = np.mean(val_loss)
+    #     print("Validation loss: ", val_loss)
+    #     print("k-fold", fold," Validation Loss: %.4f" %(val_loss)) 
+    #     # log metrics to wandb
+    #     wandb.log({"fold": fold,  "valid loss": val_loss})
+    #     validation_loss.append(val_loss)
+    # validation_loss = np.array(validation_loss)
+    # mean = np.mean(validation_loss)
+    # std = np.std(validation_loss)
+    # print("Validation Score: %.4f, ± %.4f" %(mean, std))
+    
+        model.eval()  # test case 학습 방지를 위함
         test_loss = 0
         correct = 0
-        val_loss = []
+
         with torch.no_grad():
-            model.eval()
             for data, target in test_loader:
-                data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
+                data = data.to(device)
                 target = target.to(device)
                 output = model(data, frames)
                 test_loss += criterion(output, target).item() # sum up batch loss
-                valid_loss = criterion(output,target).detach().cpu().numpy()
-                val_loss.append(valid_loss)
                 pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()
-            print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+            print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
                     test_loss, correct, len(test_loader.dataset),
-                    100. * correct / len(test_loader.dataset)))
-                    
-        model.train()
-        val_loss = np.mean(val_loss)
-        print("Validation loss: ", val_loss)
-        print("k-fold", fold," Validation Loss: %.4f" %(val_loss)) 
-         # log metrics to wandb
-        wandb.log({"fold": fold,  "valid loss": val_loss})
-        validation_loss.append(val_loss)
-    validation_loss = np.array(validation_loss)
-    mean = np.mean(validation_loss)
-    std = np.std(validation_loss)
-    print("Validation Score: %.4f, ± %.4f" %(mean, std))
-    
-    '''
-    # Create model and optimizer.
-    model = Original_Model().to(device)
-#    ensemble_model = Ensemble()
-    if start_epoch > 1:
-        resume = True
-    else:
-        resume = False
-
-    # Create directory for storing checkpoints.
-    os.makedirs(os.path.join(dataset_dir, "original_model"), exist_ok=True)
-
-    print("Start training")
-    validation_loss = []
-    
-    
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    
-    model.train()  # 학습을 위함
-    for epoch in range(num_epochs):
-        print("EPOCH ", epoch)
-        for index, (data, target) in enumerate(train_loader):
-            # print(data)
-            #print(data.shape)
-            data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
-            target = target.to(device)
-            #print(data.shape)
-            optimizer.zero_grad()  # 기울기 초기화
-            output = model(data, input_dim = frames)
-            #print(output)
-            #print(output.shape)
-            #print(target)
-            loss = criterion(output, target)
-            loss.backward()  # 역전파
-            optimizer.step()
-
-            if index % 100 == 0:
-                print("loss of {} epoch, {} index : {}".format(epoch, index, loss.item()))
-    '''
-    model.eval()  # test case 학습 방지를 위함
-    test_loss = 0
-    correct = 0
-
-    with torch.no_grad():
-        for data, target in test_loader:
-            data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
-            target = target.to(device)
-            output = model(data, frames)
-            test_loss += criterion(output, target).item() # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-                test_loss, correct, len(test_loader.dataset),
-                100. * correct / len(test_loader.dataset))) 
+                    100. * correct / len(test_loader.dataset))) 

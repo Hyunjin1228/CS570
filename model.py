@@ -61,13 +61,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import cv2
+from tqdm import tqdm
 
-
-def hardwire_layer(input):
+def hardwire_layer(input, device, verbose=False):
     """
-    Proprocess the given consecutive input frames into 5 different styles. 
-    input : (N, frames, height, width, colors=3)
-    ex) TRECVID dataset : (N, 7, 60, 40, 3),  KTH dataset : (N, 9, 80, 60, 3)
+    Proprocess the given consecutive input (grayscaled) frames into 5 different styles. 
+    input : array of shape (N, frames, height, width)
+    ex) TRECVID dataset : (N, 7, 60, 40),  KTH dataset : (N, 9, 80, 60)
     
     ##################################### hardwired frames #####################################
     # content: [[[gray frames], [grad-x frames], [grad-y frames], [opt-x frames], [opt-y frames]], ...]
@@ -75,29 +75,31 @@ def hardwire_layer(input):
     #           => total: 5f-2 frames
     ############################################################################################
     """
-    assert len(input.shape) == 5 and input.shape[4] == 3
-    print("Before hardwired layer:\t", input.shape)
-    N, f, h, w = input.shape[:4] 
+    assert len(input.shape) == 4 
+    if verbose: print("Before hardwired layer:\t", input.shape)
+    N, f, h, w = input.shape
     
-    hardwired = np.zeros((N, 5*f-2, h, w)) # gray,gradient-x,y for each frame (fx3)  +   optflow-x,y for each two consecutive frames ((f-1)x2)
-    gray = np.zeros((N, f, h, w), dtype='uint8')
-    for i in range(N):
+    hardwired = torch.zeros((N, 5*f-2, h, w)).to(device) 
+    input = input.to(device)
+
+    for j in range(f):
+        # gray
+        hardwired[:,0+j,:,:] = input[:,j,:,:]
+        # gradient-x, gradient-y
+        hardwired[:,f+j,:,:], hardwired[:,2*f+j,:,:] = torch.gradient(input[:,j,:,:], dim=[2,1]) 
+        
+    input = input.cpu()
+    for i in tqdm(range(N), desc="hardwiring"):
         for j in range(f):
-            # gray
-            gray[i,j,:,:] = cv2.cvtColor(input[i,j,:,:,:], cv2.COLOR_BGR2GRAY)
-            hardwired[i,0+j,:,:] = gray[i,j,:,:]
-            
-            # gradient-x, gradient-y
-            hardwired[i,f+j,:,:], hardwired[i,2*f+j,:,:] = np.gradient(gray[i,j,:,:], axis=1), np.gradient(gray[i,j,:,:], axis=0)
-            
             # optflow-x,y
             if j == f-1: 
                 continue
-            flow = cv2.calcOpticalFlowFarneback(gray[i,j,:,:],gray[i,j+1,:,:],None,0.5,3,15,3,5,1.1,cv2.OPTFLOW_FARNEBACK_GAUSSIAN)
-            hardwired[i,3*f+j,:,:], hardwired[i,4*f-1+j,:,:] = flow[:,:,0], flow[:,:,1]
+            flow = cv2.calcOpticalFlowFarneback(input[i,j,:,:].numpy(), input[i,j+1,:,:].numpy(),None,0.5,3,15,3,5,1.1,cv2.OPTFLOW_FARNEBACK_GAUSSIAN)
+            flow = torch.Tensor(flow).to(device)
+            hardwired[i,3*f+j,:,:], hardwired[i,4*f-1+j,:,:] = flow[:,:,0], flow[:,:,1]#torch.Tensor(flow[:,:,0]).to(device), torch.Tensor(flow[:,:,1]).to(device)
     
-    hardwired = torch.reshape(torch.from_numpy(hardwired), (N, 1, 5*f-2, h, w))
-    print("After hardwired layer :\t", hardwired.shape)
+    hardwired = hardwired.reshape(N, 1, 5*f-2, h, w)
+    if verbose: print("After hardwired layer :\t", hardwired.shape)
     return hardwired
 
 
@@ -128,7 +130,7 @@ class Original_Model(nn.Module):
             self.pool1 = nn.MaxPool2d(3)
             self.pool2 = nn.MaxPool2d(3)
             self.conv3 = nn.Conv2d(in_channels=self.dim2, out_channels=128, kernel_size=(6,4), stride=1)
-            self.fc1 = nn.Linear(self.dim1, 6, bias=False)
+            self.fc1 = nn.Linear(128, 6, bias=False)
 
         elif self.mode == 'TRECVID':
             self.conv1 = nn.Conv3d(in_channels=1, out_channels=2, kernel_size=(3,7,7), stride=1)
@@ -136,7 +138,7 @@ class Original_Model(nn.Module):
             self.pool1 = nn.MaxPool2d(2)
             self.pool2 = nn.MaxPool2d(3)
             self.conv3 = nn.Conv2d(in_channels=self.dim2, out_channels=128, kernel_size=(7,4), stride=1)
-            self.fc1 = nn.Linear(self.dim1, 3, bias=False)
+            self.fc1 = nn.Linear(128, 3, bias=False)
         
 
     def forward(self, x):

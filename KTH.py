@@ -1,11 +1,10 @@
 import imageio
-import cv2
-import numpy as np
+from tqdm import tqdm
 import os
 import pickle
 import re
-
-from PIL import Image
+from torchvision import transforms
+import torch
 
 CATEGORIES = [
     "boxing",
@@ -16,68 +15,92 @@ CATEGORIES = [
     "walking"
 ]
 
-# Dataset are divided according to the instruction at:
-# http://www.nada.kth.se/cvap/actions/00sequences.txt
-TRAIN_PEOPLE_ID = [22, 2, 3, 5, 11, 12, 13, 14, 15, 16, 17, 18, 25, 1, 4]
-DEV_PEOPLE_ID = [19, 20, 21, 23, 24]
-TEST_PEOPLE_ID = [6, 7, 8, 9, 10]
+base_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Resize((80, 60)),
+    transforms.Grayscale(num_output_channels=1)
+])
 
-def make_raw_dataset(dataset="train"):
-    if dataset == "train":
-        ID = TRAIN_PEOPLE_ID
-    elif dataset == "dev":
-        ID = DEV_PEOPLE_ID
-    else:
-        ID = TEST_PEOPLE_ID
-
+def make_raw_dataset(directory="data", transform=None, f=9):
+    """
+    Make a raw dataset(format: {subject_id}.p) into 'data' directory from the raw KTH video dataset.
+    Dataset are divided according to the instruction at:
+    http://www.nada.kth.se/cvap/actions/00sequences.txt
+    """
     frames_idx = parse_sequence_file()
+    if not transform :
+        transform = base_transform
 
-    data = []
+    subjects = 25
+    data = [[] for _ in range(subjects)] # list of data of each subject (total 25 subjects(people))
+    raw_path = os.path.join(os.getcwd(), "kth")  # directory path that the KTH dataset videos are stored
+    dir_path = os.path.join(os.getcwd(), directory) # directory path that the processed dataset will be stored
+    if not os.path.exists(dir_path):
+        os.mkdir(dir_path)
 
+    print("Processing ...")
     for category in CATEGORIES:
         # Get all files in current category's folder.
-        folder_path = os.path.join(".", "kth", category)
+        folder_path = os.path.join(raw_path, category)
         filenames = sorted(os.listdir(folder_path))
 
-        for filename in filenames:
-            filepath = os.path.join(".", "kth", category, filename)
+        for filename in tqdm(filenames, desc=category):
+            file_path = os.path.join(folder_path, filename)
 
             # Get id of person in this video.
-            person_id = int(filename.split("_")[0][6:])
-            if person_id not in ID:
-                continue
+            subject_id = int(filename.split("_")[0][6:])-1
 
-            vid = imageio.get_reader(filepath, "ffmpeg")
-
-            frames = []
+            vid = imageio.get_reader(file_path, "ffmpeg")
+            input = []
+            seg_frames = []
 
             # Add each frame to correct list.
+            seg_cnt = 0
+            seg = frames_idx[filename][seg_cnt]
+            
             for i, frame in enumerate(vid):
-                # Boolean flag to check if current frame contains human.
-                ok = False
-                for seg in frames_idx[filename]:
-                    if i >= seg[0] and i <= seg[1]:
-                        ok = True
-                        break
-                if not ok:
+                if i < seg[0]:
                     continue
+                elif i <= seg[1]:
+                    frame = transform(frame).to(device)
+                    if len(seg_frames) == 0:
+                        seg_frames = frame
+                        seg_frames.to(device)
+                    else:
+                        seg_frames = torch.cat([seg_frames, frame], dim=0) 
+                    
+                    if i == seg[1]: # this is last frame of this segment 
+                        N, throw = seg_frames.shape[0] // f, seg_frames.shape[0] % f
+                        if throw > 0:
+                            seg_frames = seg_frames[:-throw]
+                        seg_frames = seg_frames.reshape(N, f, seg_frames.shape[-2], seg_frames.shape[-1])
+                        
+                        if seg_cnt == 0:
+                            input = seg_frames[:]
+                            input.to(device)
+                        else:
+                            input = torch.cat([input, seg_frames], dim=0) 
+                        
+                        # segment update
+                        seg_cnt += 1
+                        if seg_cnt >= len(frames_idx[filename]): # no more segment
+                            break
+                        else:
+                            seg_frames = []
+                            seg = frames_idx[filename][seg_cnt]
 
-                # Convert to grayscale.
-                frame = Image.fromarray(np.array(frame))
-#                frame = frame.convert("L")
-#                frame = np.array(frame.getdata(),
-#                                 dtype=np.uint8).reshape((120, 160))
-#                frame = np.array(Image.fromarray(frame).resize((60,40)))
-
-                frames.append(frame)
-
-            data.append({
+            data[subject_id].append({
                 "filename": filename,
                 "category": category,
-                "frames": frames    
+                "input": input, # Tensor shape : (N, f, c, h, w)
+                "subject": subject_id
             })
 
-    pickle.dump(data, open("data/%s.p" % dataset, "wb"))
+    # save the data per each subject
+    print("\nData Saving ...")
+    for subject_id, d in enumerate(tqdm(data, desc="saving")): 
+        person_path = os.path.join(dir_path, str(subject_id))
+        pickle.dump(d, open("%s.p" % person_path, "wb"))
     
 
 def parse_sequence_file():
@@ -123,9 +146,5 @@ def parse_sequence_file():
     return frames_idx
 
 if __name__ == "__main__":
-    print("Making raw train dataset")
-    make_raw_dataset(dataset="train")
-    print("Making raw dev dataset")
-    make_raw_dataset(dataset="dev")
-    print("Making raw test dataset")
-    make_raw_dataset(dataset="test")
+    print("Making dataset")
+    make_raw_dataset()
