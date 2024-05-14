@@ -26,7 +26,7 @@ def evaluation(dataloader, frames, h, w):
             pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
         print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-                val_loss, correct, len(test_loader.dataset),
+                np.mean(val_loss), correct, len(test_loader.dataset),
                 100. * correct / len(test_loader.dataset)))
                 
     model.train()
@@ -72,6 +72,19 @@ if __name__ == "__main__":
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f'{device} is available')
+
+    import wandb
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project="CS570",
+        # track hyperparameters and run metadata
+        config={
+        "learning_rate": args.lr,
+        "architecture": "3D CNN",
+        "dataset": "KTH",
+        "epochs": args.num_epochs,
+        }
+    )
 
     print("Loading dataset")
     
@@ -122,11 +135,15 @@ if __name__ == "__main__":
                 optimizer.step()
 
                 if index % 250 == 0:
-                    print("loss of {} epoch, {} index : {}".format(epoch, index, loss.item()))
+                    print("loss of {:2d} epoch, {:3d} index : {:.7f}".format(epoch, index, loss.item()))
+                    # log metrics to wandb
+                    wandb.log({"fold": fold, "epoch": epoch, "train loss": loss.item()})
         
         train_loss = evaluation(trainloader, frames, h, w)
         val_loss = evaluation(valloader, frames, h, w)
         print("k-fold", fold," Train Loss: %.4f, Validation Loss: %.4f" %(train_loss, val_loss)) 
+        # log metrics to wandb
+        wandb.log({"fold": fold, "train loss": train_loss, "valid loss": val_loss})
         validation_loss.append(val_loss)
     validation_loss = np.array(validation_loss)
     mean = np.mean(validation_loss)

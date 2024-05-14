@@ -2,14 +2,9 @@ import numpy as np
 import os
 import pickle
 import torch
-from torch.utils.data import Dataset, DataLoader
-import torch.nn as nn
-import torch.nn.functional as F
-from torchsummary import summary
+from torch.utils.data import Dataset
 import cv2
-from pytube import YouTube
 import random
-from torchvision import transforms
 
 CATEGORY_INDEX = {
     "boxing": 0,
@@ -28,10 +23,8 @@ class RawDataset(Dataset):
     def __init__(self, directory, dataset="train", transform= None, width = 60, height = 80, frames = 9) :
         self.instances, self.labels, self.filepath = self.read_dataset(directory, dataset, transform)
 
-        # print(self.instances)
         self.hardwireds = torch.tensor(self.hardwires(self.filepath, self.instances, self.labels, width, height, frames))
         self.hardwire_labels = torch.tensor(self.hardwire_labels(self.filepath, self.instances, self.labels, width, height, frames))
-        # print(self.hardwireds.shape, self.hardwire_labels.shape)
         self.imgtransform = transform
 
     def __len__(self):
@@ -55,7 +48,6 @@ class RawDataset(Dataset):
         labels = []
         for video in videos:
             frames = []
-            # print(len(video['frames']))
             for frame in video["frames"]:
                 if imgtransform:
                     frames.append(imgtransform(frame))
