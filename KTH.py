@@ -21,7 +21,7 @@ base_transform = transforms.Compose([
     transforms.Grayscale(num_output_channels=1)
 ])
 
-def make_raw_dataset(directory="data", transform=None, f=9):
+def make_raw_dataset(directory="data", transform=None, f=9, device=None):
     """
     Make a raw dataset(format: {subject_id}.p) into 'data' directory from the raw KTH video dataset.
     Dataset are divided according to the instruction at:

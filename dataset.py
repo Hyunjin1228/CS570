@@ -30,7 +30,7 @@ class KTHDataset(Dataset):
         
         if not os.path.exists(self.directory) or len(os.listdir(self.directory)) < self.num_subjects:
             print("Making dataset")
-            make_raw_dataset(directory=directory, transform=transform, frames=frames)
+            make_raw_dataset(directory=directory, transform=transform, f=frames, device=self.device)
         assert len(os.listdir(self.directory)) == self.num_subjects
         
         random.seed(seed)
@@ -72,5 +72,6 @@ class KTHDataset(Dataset):
         # hardwiring layer
         inputs = hardwire_layer(inputs, self.device).cpu() # shape changed to (N,1,dim=43,h=80,w=60)
         labels = torch.LongTensor(labels)
+        print(self.type, inputs.shape)
     
         return inputs, labels

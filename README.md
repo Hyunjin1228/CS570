@@ -10,13 +10,7 @@ rm kth-human-motion -r
 
 Make the downloaded file in the folder kth. As ./kth/boxing/person01_boxing_d1_uncomp.avi.
 
-2. Make the dataset for training.
-
-```
-python KTH.py
-```
-
-3. Run the model
+2. Run the model
 
 ```
 python run.py

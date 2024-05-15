@@ -2,34 +2,7 @@ import argparse
 from torchvision import transforms
 from dataset import *
 from model import *
-import torch.optim as optim
-# from sklearn.model_selection import train_test_split
-# from sklearn.model_selection import KFold
-
-# def evaluation(model, dataloader, frames, h, w):
-#     hardwire_size = frames * 5 - 2 
-#     test_loss = 0
-#     correct = 0
-#     val_loss = []
-#     with torch.no_grad():
-#         model.eval()
-#         for data, target in dataloader:
-#             data = torch.reshape(data, (data.shape[0],1,hardwire_size,h,w)).to(device)
-#             target = target.to(device)
-#             output = model(data, frames)
-#             test_loss += criterion(output, target).item() # sum up batch loss
-#             valid_loss = criterion(output,target).detach().cpu().numpy()
-#             val_loss.append(valid_loss)
-#             pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
-#             correct += pred.eq(target.view_as(pred)).sum().item()
-#         print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-#                 test_loss, correct, len(dataloader.dataset),
-#                 100. * correct / len(dataloader.dataset)))
-                
-#     model.train()
-#     val_loss = np.mean(val_loss)
-#     print("Total loss: ", val_loss)
-#     return val_loss
+import torch.optim as optim 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Single Frame ConvNet")
@@ -37,7 +10,7 @@ if __name__ == "__main__":
                         help="directory to dataset")
     parser.add_argument("--batch_size", type=int, default=16,
                         help="batch size for training (default: 16)")
-    parser.add_argument("--num_epochs", type=int, default=5,
+    parser.add_argument("--num_epochs", type=int, default=30,
                         help="number of epochs to train (default: 5)")
     parser.add_argument("--start_epoch", type=int, default=1,
                         help="start index of epoch (default: 1)")
@@ -124,15 +97,13 @@ if __name__ == "__main__":
                 optimizer.step()
                 
 
-                if index % 250 == 0:
-                    print("loss of {} epoch, {:3d} index : {}".format(epoch, index, loss.item()))
-                    
-                if index % 10 == 0:
-                    # log metrics to wandb
-                    name = str(i)+"-th train losss"
-                    wandb.log({name: loss.item()})
+                # if index % 250 == 0:
+                #     print("loss of {} epoch, {:3d} index : {}".format(epoch, index, loss.item()))
 
             print("Epoch {} Loss = {}".format(epoch, trainloss/data_num))
+            # log metrics to wandb
+            name = str(i)+"-th train loss"
+            wandb.log({name: trainloss/data_num})
             
     #         hardwire_size = frames * 5 - 2 
     #         test_loss = 0
@@ -173,10 +144,13 @@ if __name__ == "__main__":
             for data, target in test_loader:
                 data = data.to(device)
                 target = target.to(device)
-                output = model(data, frames)
+                output = model(data)
                 test_loss += criterion(output, target).item() # sum up batch loss
                 pred = output.argmax(dim=1, keepdim=True) # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()
             print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
                     test_loss, correct, len(test_loader.dataset),
                     100. * correct / len(test_loader.dataset))) 
+            # log metrics to wandb
+            name1, name2 = str(i)+"-th test loss", str(i)+"-th test acc."
+            wandb.log({name1: test_loss, name2:correct / len(test_loader.dataset)})
